@@ -1,53 +1,55 @@
+# scripts/pipeline_runner.py
+
 import os
 import sys
+from datetime import datetime
 
 import google.cloud.aiplatform as aiplatform
 from kfp import compiler
 
-# Ensure the project root is on sys.path so `src` is importable when running this script directly.
-# This makes the script runnable as: python scripts/pipeline_runner.py
+# Ajout du projet racine au path
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Importer les constantes et la définition de la pipeline
 from src import constants
 from src.pipelines.model_training_pipeline import model_training_pipeline
 
-# Nom du fichier YAML compilé
-PIPELINE_YAML_FILE = "yoda_finetuning_pipeline.yaml"
+PIPELINE_JSON_FILE = "yoda_finetuning_pipeline.json"
 
 def main():
     """Compile et exécute la pipeline sur Vertex AI."""
 
-    # 1. Compilation de la pipeline
     compiler.Compiler().compile(
         pipeline_func=model_training_pipeline,
-        package_path=PIPELINE_YAML_FILE,
+        package_path=PIPELINE_JSON_FILE,
     )
-    print(f"Pipeline compilée avec succès en '{PIPELINE_YAML_FILE}'.")
+    print(f"Pipeline compilée avec succès en '{PIPELINE_JSON_FILE}'.")
 
-    # 2. Initialisation du client Vertex AI
     aiplatform.init(
         project=constants.GCP_PROJECT_ID,
         location=constants.GCP_REGION,
     )
     print("Client Vertex AI initialisé.")
 
-    # 3. Définition du Pipeline Job
-    pipeline_job = aiplatform.PipelineJob(
-        display_name="yoda-finetuning-pipeline-run",
-        template_path=PIPELINE_YAML_FILE,
-        parameter_values={
-            "raw_data_gcs_path": "gs://public-datasets-bootcamp/yoda/yoda-sentences.csv"
-        },
-        enable_caching=False # Désactiver le cache pour les tests
-    )
-    print("Job de pipeline défini.")
+    # Créer un nom unique pour chaque exécution
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    display_name = f"yoda-finetuning-run-{timestamp}"
 
-    # 4. Soumission de la pipeline
+    pipeline_job = aiplatform.PipelineJob(
+        display_name=display_name,
+        template_path=PIPELINE_JSON_FILE,
+        pipeline_root=constants.PIPELINE_ROOT,
+        parameter_values={
+            # Assurez-vous que ce chemin est correct
+            "raw_data_gcs_path": "gs://bucket-llm-ops/yoda_sentences.csv"
+        },
+        enable_caching=True, # Réactiver le cache est une bonne pratique
+    )
+    
+    print("Soumission de la pipeline à Vertex AI...")
     pipeline_job.submit()
-    print("Pipeline soumise à Vertex AI.")
+    print("Pipeline soumise avec succès !")
     print(f"Suivez l'exécution ici : {pipeline_job._dashboard_uri()}")
 
 if __name__ == "__main__":

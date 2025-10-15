@@ -19,7 +19,13 @@
       "Bash(gcloud config set:*)",
       "Bash(gcloud config get-value:*)",
       "Bash(gcloud services list:*)",
-      "Bash(gsutil ls:*)"
+      "Bash(gsutil ls:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(gcloud services enable:*)",
+      "Bash(gcloud projects add-iam-policy-binding:*)",
+      "Bash(gcloud ai metadata-stores create:*)",
+      "Bash(gcloud storage ls:*)",
+      "Read(//c/Users/mdrag/Documents/**)"
     ],
     "deny": [],
     "ask": []

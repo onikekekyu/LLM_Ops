@@ -1,0 +1,94 @@
+{
+  "components": {
+    "comp-process-yoda-data": {
+      "executorLabel": "exec-process-yoda-data",
+      "inputDefinitions": {
+        "parameters": {
+          "raw_data_gcs_path": {
+            "parameterType": "STRING"
+          }
+        }
+      },
+      "outputDefinitions": {
+        "artifacts": {
+          "test_dataset": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          },
+          "train_dataset": {
+            "artifactType": {
+              "schemaTitle": "system.Dataset",
+              "schemaVersion": "0.0.1"
+            }
+          }
+        }
+      }
+    }
+  },
+  "defaultPipelineRoot": "gs://bucket-llm-ops/pipeline-root",
+  "deploymentSpec": {
+    "executors": {
+      "exec-process-yoda-data": {
+        "container": {
+          "args": [
+            "--executor_input",
+            "{{$}}",
+            "--function_to_execute",
+            "process_yoda_data"
+          ],
+          "command": [
+            "sh",
+            "-c",
+            "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip || python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'pandas==2.2.2' 'datasets==2.19.0' 'gcsfs==2024.3.1' 'pyarrow==16.1.0'  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.14.6' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\n",
+            "sh",
+            "-ec",
+            "program_path=$(mktemp -d)\n\nprintf \"%s\" \"$0\" > \"$program_path/ephemeral_component.py\"\n_KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         \"$program_path/ephemeral_component.py\"                         \"$@\"\n",
+            "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import *\n\ndef process_yoda_data(\n    raw_data_gcs_path: str,\n    # MODIFI\u00c9 : On d\u00e9clare les sorties comme des Artefacts de type 'Dataset'\n    # KFP fournira automatiquement un chemin GCS pour ces variables.\n    train_dataset: dsl.OutputPath(dsl.Dataset),\n    test_dataset: dsl.OutputPath(dsl.Dataset),\n):\n    \"\"\"\n    Lit les donn\u00e9es brutes depuis GCS, les formate pour Phi-3,\n    les divise en ensembles d'entra\u00eenement et de test, et les sauvegarde sur GCS.\n    \"\"\"\n    # Importations \u00e0 l'int\u00e9rieur pour all\u00e9ger l'import du module\n    import logging\n    import pandas as pd\n    from datasets import Dataset\n\n    logging.info(f\"Lecture du dataset depuis : {raw_data_gcs_path}\")\n    df = pd.read_csv(raw_data_gcs_path)\n\n    # S'assurer que les colonnes existent\n    if \"sentence\" not in df.columns or \"translation\" not in df.columns:\n        raise ValueError(\"Le CSV doit contenir les colonnes 'sentence' et 'translation'.\")\n\n    hf_dataset = Dataset.from_pandas(df)\n    logging.info(\"Conversion en Dataset Hugging Face r\u00e9ussie.\")\n\n    def format_chat_template(example):\n        # MODIFI\u00c9 : Utilisation des bons noms de colonnes du CSV\n        return {\n            \"messages\": [\n                {\"role\": \"user\", \"content\": example[\"sentence\"]},\n                {\"role\": \"assistant\", \"content\": example[\"translation\"]},\n            ]\n        }\n\n    # Supprimer les colonnes originales apr\u00e8s le formatage pour ne garder que \"messages\"\n    formatted_dataset = hf_dataset.map(format_chat_template, remove_columns=hf_dataset.column_names)\n    logging.info(\"Formatage du dataset au format conversationnel termin\u00e9.\")\n\n    split_dataset = formatted_dataset.train_test_split(test_size=0.2, seed=42)\n    train_split = split_dataset[\"train\"]\n    test_split = split_dataset[\"test\"]\n    logging.info(f\"Dataset divis\u00e9 : {len(train_split)} exemples d'entra\u00eenement, {len(test_split)} exemples de test.\")\n\n    # MODIFI\u00c9 : Sauvegarder les datasets en utilisant les chemins fournis par KFP\n    # Nous utilisons to_json pour mieux pr\u00e9server la structure conversationnelle.\n    train_split.to_json(train_dataset)\n    test_split.to_json(test_dataset)\n\n    logging.info(f\"Dataset d'entra\u00eenement sauvegard\u00e9 sur : {train_dataset}\")\n    logging.info(f\"Dataset de test sauvegard\u00e9 sur : {test_dataset}\")\n    logging.info(\"\u2705 T\u00e2che termin\u00e9e avec succ\u00e8s !\")\n\n    # MODIFI\u00c9 : Plus besoin de retourner les chemins, KFP les g\u00e8re automatiquement.\n    # La fonction peut ne rien retourner.\n\n"
+          ],
+          "image": "python:3.10-slim"
+        }
+      }
+    }
+  },
+  "pipelineInfo": {
+    "description": "Pipeline pour pr\u00e9parer les donn\u00e9es et fine-tuner un mod\u00e8le.",
+    "name": "yoda-finetuning-pipeline"
+  },
+  "root": {
+    "dag": {
+      "tasks": {
+        "process-yoda-data": {
+          "cachingOptions": {
+            "enableCache": true
+          },
+          "componentRef": {
+            "name": "comp-process-yoda-data"
+          },
+          "inputs": {
+            "parameters": {
+              "raw_data_gcs_path": {
+                "componentInputParameter": "raw_data_gcs_path"
+              }
+            }
+          },
+          "taskInfo": {
+            "name": "process-yoda-data"
+          }
+        }
+      }
+    },
+    "inputDefinitions": {
+      "parameters": {
+        "raw_data_gcs_path": {
+          "defaultValue": "gs://bucket-llm-ops/yoda-sentences.csv",
+          "isOptional": true,
+          "parameterType": "STRING"
+        }
+      }
+    }
+  },
+  "schemaVersion": "2.1.0",
+  "sdkVersion": "kfp-2.14.6"
+}
