@@ -1,0 +1,106 @@
+# PIPELINE DEFINITION
+# Name: yoda-finetuning-pipeline
+# Description: Pipeline pour préparer les données et fine-tuner un modèle Phi-3 sur les phrases de Yoda.
+# Inputs:
+#    raw_data_gcs_path: str [Default: 'gs://bucket-llm-ops/yoda_sentences.csv']
+components:
+  comp-process-yoda-data:
+    executorLabel: exec-process-yoda-data
+    inputDefinitions:
+      parameters:
+        raw_data_gcs_path:
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        test_dataset_path:
+          parameterType: STRING
+        train_dataset_path:
+          parameterType: STRING
+defaultPipelineRoot: gs://bucket-llm-ops/pipeline-root
+deploymentSpec:
+  executors:
+    exec-process-yoda-data:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - process_yoda_data
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas==2.2.2'\
+          \ 'datasets==2.19.0' 'gcsfs==2024.3.1' 'pyarrow==16.1.0'  &&  python3 -m\
+          \ pip install --quiet --no-warn-script-location 'kfp==2.14.6' '--no-deps'\
+          \ 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"$0\" \"$@\"\
+          \n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef process_yoda_data(\n    raw_data_gcs_path: str,\n) -> NamedTuple(\n\
+          \    \"Outputs\",\n    [\n        (\"train_dataset_path\", str),\n     \
+          \   (\"test_dataset_path\", str),\n    ],\n):\n    \"\"\"\n    Lit les donn\xE9\
+          es brutes depuis GCS, les formate pour Phi-3,\n    les divise en ensembles\
+          \ d'entra\xEEnement et de test, et les sauvegarde sur GCS.\n    \"\"\"\n\
+          \    logging.info(f\"Lecture du dataset depuis : {raw_data_gcs_path}\")\n\
+          \    # Import heavy dependencies inside the function so module import doesn't\
+          \ fail in dev.\n    import pandas as pd\n    from datasets import Dataset\n\
+          \n    # Pandas lit directement depuis un chemin GCS\n    df = pd.read_csv(raw_data_gcs_path)\n\
+          \n    # Conversion en objet Dataset de Hugging Face\n    hf_dataset = Dataset.from_pandas(df)\n\
+          \    logging.info(\"Conversion en Dataset Hugging Face r\xE9ussie.\")\n\n\
+          \    # Fonction pour appliquer le template de chat\n    def format_chat_template(example):\n\
+          \        return {\n            \"messages\": [\n                {\"role\"\
+          : \"user\", \"content\": example[\"english_sentence\"]},\n             \
+          \   {\"role\": \"assistant\", \"content\": example[\"yoda_sentence\"]},\n\
+          \            ]\n        }\n\n    # Appliquer le formatage\n    formatted_dataset\
+          \ = hf_dataset.map(format_chat_template)\n    logging.info(\"Formatage du\
+          \ dataset au format conversationnel termin\xE9.\")\n\n    # Diviser le dataset\
+          \ (80% train, 20% test)\n    split_dataset = formatted_dataset.train_test_split(test_size=0.2,\
+          \ seed=42)\n    train_split = split_dataset[\"train\"]\n    test_split =\
+          \ split_dataset[\"test\"]\n    logging.info(f\"Dataset divis\xE9 : {len(train_split)}\
+          \ exemples d'entra\xEEnement, {len(test_split)} exemples de test.\")\n\n\
+          \    # Define output paths\n    train_output_path = \"/tmp/train.csv\"\n\
+          \    test_output_path = \"/tmp/test.csv\"\n\n    # Sauvegarder les datasets\n\
+          \    train_split.to_csv(train_output_path, index=False)\n    test_split.to_csv(test_output_path,\
+          \ index=False)\n    logging.info(f\"Dataset d'entra\xEEnement sauvegard\xE9\
+          \ sur : {train_output_path}\")\n    logging.info(f\"Dataset de test sauvegard\xE9\
+          \ sur : {test_output_path}\")\n    logging.info(\"\u2705 T\xE2che termin\xE9\
+          e avec succ\xE8s !\")\n\n    return (train_output_path, test_output_path)\n\
+          \n"
+        image: python:3.10-slim
+pipelineInfo:
+  description: "Pipeline pour pr\xE9parer les donn\xE9es et fine-tuner un mod\xE8\
+    le Phi-3 sur les phrases de Yoda."
+  name: yoda-finetuning-pipeline
+root:
+  dag:
+    tasks:
+      process-yoda-data:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-process-yoda-data
+        inputs:
+          parameters:
+            raw_data_gcs_path:
+              componentInputParameter: raw_data_gcs_path
+        taskInfo:
+          name: process-yoda-data
+  inputDefinitions:
+    parameters:
+      raw_data_gcs_path:
+        defaultValue: gs://bucket-llm-ops/yoda_sentences.csv
+        isOptional: true
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.14.6

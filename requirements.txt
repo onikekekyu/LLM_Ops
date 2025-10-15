@@ -1,3 +1,11 @@
+# Vertex AI and Kubeflow dependencies
+google-cloud-aiplatform>=1.38.0
+kfp>=2.4.0
+
+# Data processing
+pandas>=2.0.0
+
+# Development dependencies
 appnope==0.1.4
 asttokens==3.0.0
 certifi==2024.12.14
@@ -28,4 +36,3 @@ stack-data==0.6.3
 tornado==6.4.2
 traitlets==5.14.3
 wcwidth==0.2.13
-wheel @ file:///opt/homebrew/Cellar/python%403.13/3.13.1/libexec/wheel-0.45.1-py3-none-any.whl#sha256=da46333d5dcbde6e20cf7e2f8fff9e9ce76e8c94dc4afd6fb95fc4bc2745fb5e

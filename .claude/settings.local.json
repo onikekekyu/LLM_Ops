@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(pip show:*)",
+      "Bash(find:*)",
+      "Bash(powershell:*)",
+      "Bash(if [ -f \".venv/Scripts/python.exe\" ])",
+      "Bash(then .venv/Scripts/python.exe -m pip show kfp)",
+      "Bash(elif [ -f \"venv/Scripts/python.exe\" ])",
+      "Bash(then venv/Scripts/python.exe -m pip show:*)",
+      "Bash(else echo \"Virtual environment not found\")",
+      "Bash(fi)",
+      "Bash(.venv/Scripts/python.exe -m ensurepip:*)",
+      "Bash(.venv/Scripts/python.exe -m pip install:*)",
+      "Bash(.venv/Scripts/python.exe scripts/pipeline_runner.py:*)",
+      "Bash(gcloud auth:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(gcloud config get-value:*)",
+      "Bash(gcloud services list:*)",
+      "Bash(gsutil ls:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
